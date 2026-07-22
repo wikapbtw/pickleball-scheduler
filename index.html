@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Pickleball Scheduler Pro v1.0</title>
+<title>Pickleball Scheduler Pro v1.1</title>
 <style>
 :root{
   --bg:#f4f7fb;--panel:#ffffff;--text:#172033;--muted:#6b7280;--line:#e5e7eb;
@@ -29,6 +29,9 @@ select,input{width:100%;padding:12px 14px;border:1px solid var(--line);border-ra
 select:focus,input:focus{border-color:#93c5fd;box-shadow:0 0 0 4px rgba(37,99,235,.1)}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .players{display:grid;gap:9px;margin-top:8px}
+.player-row{display:grid;grid-template-columns:minmax(0,1fr) 130px;gap:9px}
+.dupr-input{text-align:center;font-variant-numeric:tabular-nums}
+@media(max-width:430px){.player-row{grid-template-columns:1fr 112px}}
 .btnrow{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
 button{border:0;border-radius:12px;padding:12px 14px;font-weight:800;cursor:pointer;transition:.18s}
 button:hover{transform:translateY(-1px)}
@@ -72,9 +75,9 @@ footer{text-align:center;color:var(--muted);font-size:12px;margin-top:26px}
   <div class="hero">
     <div>
       <h1>Pickleball Scheduler Pro</h1>
-      <p>雙打公平排程工具｜搭檔不重複｜可連打兩場但不可連三場</p>
+      <p>雙打公平排程工具｜DUPR 實力平衡｜搭檔不重複｜不可連打三場</p>
     </div>
-    <div class="badge">v1.0 單檔離線版</div>
+    <div class="badge">v1.1 DUPR 平衡版</div>
   </div>
 
   <div class="layout">
@@ -109,7 +112,7 @@ footer{text-align:center;color:var(--muted);font-size:12px;margin-top:26px}
       <button class="primary" id="generateBtn" style="width:100%;margin-top:10px">產生最佳賽程</button>
       <p class="note">
         硬性規則：每場 4 人、搭檔不重複、任何球員不可連續出賽 3 場。<br>
-        軟性目標：出賽平均、休息平均、對手分布平均。
+        軟性目標：出賽平均、休息平均、對手分布平均，並讓兩隊平均 DUPR 分差盡可能小。NR 球員暫以本次已評分球員的平均值估算。
       </p>
     </aside>
 
@@ -126,14 +129,14 @@ footer{text-align:center;color:var(--muted);font-size:12px;margin-top:26px}
         <h3>球員統計</h3>
         <div style="overflow:auto">
           <table class="stats">
-            <thead><tr><th>球員</th><th>出賽</th><th>休息</th><th>不同搭檔</th><th>不同對手</th></tr></thead>
+            <thead><tr><th>球員</th><th>DUPR</th><th>出賽</th><th>休息</th><th>不同搭檔</th><th>不同對手</th></tr></thead>
             <tbody id="statsBody"></tbody>
           </table>
         </div>
       </div>
     </main>
   </div>
-  <footer>Pickleball Scheduler Pro v1.0｜資料只保存在本機瀏覽器</footer>
+  <footer>Pickleball Scheduler Pro v1.1｜資料只保存在本機瀏覽器</footer>
 </div>
 
 <script>
@@ -153,11 +156,15 @@ playerCount.value = localStorage.getItem('pb_count') || '8';
 function renderPlayers(){
   const old=[...playersBox.querySelectorAll('input')].map(x=>x.value);
   playersBox.innerHTML='';
+  const oldDupr=[...playersBox.querySelectorAll('.dupr-input')].map(x=>x.value);
   for(let i=0;i<+playerCount.value;i++){
-    const inp=document.createElement('input');
-    inp.placeholder=`球員 ${i+1}`;
-    inp.value=old[i] || '';
-    playersBox.appendChild(inp);
+    const row=document.createElement('div');
+    row.className='player-row';
+    row.innerHTML=`
+      <input class="name-input" placeholder="球員 ${i+1}" value="${old[i] || ''}">
+      <input class="dupr-input" placeholder="NR 或 3.500" value="${oldDupr[i] || 'NR'}" inputmode="decimal" maxlength="6">
+    `;
+    playersBox.appendChild(row);
   }
   saveSettings();
 }
@@ -166,25 +173,31 @@ playerCount.addEventListener('change',renderPlayers);
 function saveSettings(){
   localStorage.setItem('pb_count',playerCount.value);
   localStorage.setItem('pb_rounds',$('#roundCount').value);
-  localStorage.setItem('pb_names',JSON.stringify([...playersBox.querySelectorAll('input')].map(x=>x.value)));
+  localStorage.setItem('pb_names',JSON.stringify([...playersBox.querySelectorAll('.name-input')].map(x=>x.value)));
+  localStorage.setItem('pb_dupr',JSON.stringify([...playersBox.querySelectorAll('.dupr-input')].map(x=>x.value)));
 }
 function restore(){
   $('#roundCount').value=localStorage.getItem('pb_rounds')||12;
   renderPlayers();
   try{
     const names=JSON.parse(localStorage.getItem('pb_names')||'[]');
-    [...playersBox.querySelectorAll('input')].forEach((x,i)=>x.value=names[i]||'');
+    [...playersBox.querySelectorAll('.name-input')].forEach((x,i)=>x.value=names[i]||'');
+    const duprs=JSON.parse(localStorage.getItem('pb_dupr')||'[]');
+    [...playersBox.querySelectorAll('.dupr-input')].forEach((x,i)=>x.value=duprs[i]||'NR');
   }catch(e){}
 }
 restore();
 
 $('#sampleBtn').onclick=()=>{
   const names=['王小明','陳志豪','林冠廷','張雅婷','李俊豪','黃詩涵','周柏宇','吳佳穎'];
-  [...playersBox.querySelectorAll('input')].forEach((x,i)=>x.value=names[i]);
+  const duprs=['3.250','3.500','3.750','4.000','4.250','4.500','4.750','5.000'];
+  [...playersBox.querySelectorAll('.name-input')].forEach((x,i)=>x.value=names[i]);
+  [...playersBox.querySelectorAll('.dupr-input')].forEach((x,i)=>x.value=duprs[i]||'NR');
   saveSettings();
 };
 $('#clearBtn').onclick=()=>{
-  [...playersBox.querySelectorAll('input')].forEach(x=>x.value='');
+  [...playersBox.querySelectorAll('.name-input')].forEach(x=>x.value='');
+  [...playersBox.querySelectorAll('.dupr-input')].forEach(x=>x.value='NR');
   saveSettings();
 };
 
@@ -211,8 +224,31 @@ function shuffled(a){
   for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}
   return a;
 }
-function buildCandidate(n,rounds){
+function parseDupr(raw){
+  const value=String(raw??'').trim().toUpperCase();
+  if(value===''||value==='NR') return null;
+  const n=Number(value);
+  return Number.isFinite(n)&&n>=0&&n<=10 ? Math.round(n*1000)/1000 : NaN;
+}
+function normalizedRatings(rawRatings){
+  const known=rawRatings.filter(v=>Number.isFinite(v));
+  const fallback=known.length ? known.reduce((a,b)=>a+b,0)/known.length : 3.5;
+  return rawRatings.map(v=>Number.isFinite(v)?v:fallback);
+}
+function teamRating(team,ratings){
+  return (ratings[team[0]]+ratings[team[1]])/2;
+}
+function matchupSkillCost(g,teams,ratings,rawRatings){
+  const a=teamRating(teams[0],ratings), b=teamRating(teams[1],ratings);
+  const teamGap=Math.abs(a-b);
+  const vals=g.map(p=>ratings[p]);
+  const groupSpread=Math.max(...vals)-Math.min(...vals);
+  const unknowns=g.filter(p=>rawRatings[p]===null).length;
+  return teamGap*42 + groupSpread*5 + unknowns*0.6;
+}
+function buildCandidate(n,rounds,rawRatings){
   const players=[...Array(n).keys()];
+  const ratings=normalizedRatings(rawRatings);
   const groups=shuffled(combinations(players,4));
   const usedPairs=new Set();
   const schedule=[];
@@ -240,7 +276,8 @@ function buildCandidate(n,rounds){
         for(const a of teams[0]) for(const b of teams[1]) oppPenalty+=opponentCounts[a][b];
         let streakPenalty=0;
         if(r>=1) for(const p of g) if(schedule[r-1].players.includes(p)) streakPenalty+=0.35;
-        const cost=spread*20+oppPenalty*3+streakPenalty+Math.random();
+        const skillPenalty=matchupSkillCost(g,teams,ratings,rawRatings);
+        const cost=spread*20+oppPenalty*3+streakPenalty+skillPenalty+Math.random();
         if(cost<bestCost){bestCost=cost;best={players:g,teams}}
       }
     }
@@ -254,7 +291,7 @@ function buildCandidate(n,rounds){
   }
   return schedule;
 }
-function analyze(schedule,n){
+function analyze(schedule,n,rawRatings){
   const played=Array(n).fill(0), partners=Array.from({length:n},()=>new Set()),
         opponents=Array.from({length:n},()=>new Set());
   for(const m of schedule){
@@ -265,27 +302,40 @@ function analyze(schedule,n){
     for(const a of t1)for(const b of t2){opponents[a].add(b);opponents[b].add(a)}
   }
   const spread=Math.max(...played)-Math.min(...played);
+  const ratings=normalizedRatings(rawRatings);
+  const teamGaps=schedule.map(m=>Math.abs(teamRating(m.teams[0],ratings)-teamRating(m.teams[1],ratings)));
+  const avgTeamGap=teamGaps.length?teamGaps.reduce((a,b)=>a+b,0)/teamGaps.length:0;
+  const maxTeamGap=teamGaps.length?Math.max(...teamGaps):0;
   const avgPartner=partners.reduce((s,x)=>s+x.size,0)/n;
   const avgOpponent=opponents.reduce((s,x)=>s+x.size,0)/n;
-  let score=100-spread*8-(Math.max(0,n-1-avgPartner))*2-(Math.max(0,n-1-avgOpponent))*1.3;
+  let score=100-spread*8-(Math.max(0,n-1-avgPartner))*2-(Math.max(0,n-1-avgOpponent))*1.3-avgTeamGap*5;
   score=Math.max(0,Math.min(100,score));
-  return {played,partners,opponents,spread,score};
+  return {played,partners,opponents,spread,score,avgTeamGap,maxTeamGap};
 }
-function searchBest(n,rounds,attempts){
+function searchBest(n,rounds,attempts,rawRatings){
   let best=null,bestA=null;
   for(let i=0;i<attempts;i++){
-    const s=buildCandidate(n,rounds);
+    const s=buildCandidate(n,rounds,rawRatings);
     if(!s) continue;
-    const a=analyze(s,n);
+    const a=analyze(s,n,rawRatings);
     if(!bestA||a.score>bestA.score){best=s;bestA=a;if(a.score>=99.5)break}
   }
   return best?{schedule:best,analysis:bestA}:null;
 }
 function names(){
-  return [...playersBox.querySelectorAll('input')].map((x,i)=>x.value.trim()||`球員${i+1}`);
+  return [...playersBox.querySelectorAll('.name-input')].map((x,i)=>x.value.trim()||`球員${i+1}`);
 }
-function renderResult(result,ns,rounds){
-  lastResult={...result,names:ns};
+function duprValues(){
+  return [...playersBox.querySelectorAll('.dupr-input')].map(x=>parseDupr(x.value));
+}
+function duprLabels(){
+  return [...playersBox.querySelectorAll('.dupr-input')].map(x=>{
+    const v=parseDupr(x.value);
+    return v===null?'NR':Number.isNaN(v)?'無效':v.toFixed(3);
+  });
+}
+function renderResult(result,ns,rounds,rawRatings,duprText){
+  lastResult={...result,names:ns,duprText};
   const a=result.analysis;
   messageEl.innerHTML=`<div class="alert ok">已完成 ${rounds} 場排程。搭檔無重複，且無人連續出賽 3 場。</div>`;
   metricsEl.style.display='grid';
@@ -293,20 +343,20 @@ function renderResult(result,ns,rounds){
     <div class="metric"><span>公平度</span><b>${a.score.toFixed(1)}%</b><div class="scorebar"><i style="width:${a.score}%"></i></div></div>
     <div class="metric"><span>出賽差距</span><b>${a.spread}</b><span>場</span></div>
     <div class="metric"><span>比賽場數</span><b>${rounds}</b><span>場</span></div>
-    <div class="metric"><span>搭檔重複</span><b>0</b><span>次</span></div>`;
+    <div class="metric"><span>平均隊伍分差</span><b>${a.avgTeamGap.toFixed(3)}</b><span>DUPR</span></div>`;
   scheduleEl.className='schedule';
   scheduleEl.innerHTML=result.schedule.map((m,i)=>`
     <div class="match">
       <div class="matchhead"><div class="round">第 ${i+1} 場</div><div class="court">雙打</div></div>
       <div class="teams">
-        <div class="team">${ns[m.teams[0][0]]}<br>${ns[m.teams[0][1]]}</div>
-        <div class="vs">VS</div>
-        <div class="team">${ns[m.teams[1][0]]}<br>${ns[m.teams[1][1]]}</div>
+        <div class="team">${ns[m.teams[0][0]]} <span class="small">${duprText[m.teams[0][0]]}</span><br>${ns[m.teams[0][1]]} <span class="small">${duprText[m.teams[0][1]]}</span><br><span class="small">隊伍平均 ${teamRating(m.teams[0],normalizedRatings(rawRatings)).toFixed(3)}</span></div>
+        <div class="vs">VS<br><span class="small">差 ${Math.abs(teamRating(m.teams[0],normalizedRatings(rawRatings))-teamRating(m.teams[1],normalizedRatings(rawRatings))).toFixed(3)}</span></div>
+        <div class="team">${ns[m.teams[1][0]]} <span class="small">${duprText[m.teams[1][0]]}</span><br>${ns[m.teams[1][1]]} <span class="small">${duprText[m.teams[1][1]]}</span><br><span class="small">隊伍平均 ${teamRating(m.teams[1],normalizedRatings(rawRatings)).toFixed(3)}</span></div>
       </div>
     </div>`).join('');
   statsWrap.style.display='block';
   statsBody.innerHTML=ns.map((name,i)=>`
-    <tr><td><b>${name}</b></td><td>${a.played[i]}</td><td>${rounds-a.played[i]}</td>
+    <tr><td><b>${name}</b></td><td>${duprText[i]}</td><td>${a.played[i]}</td><td>${rounds-a.played[i]}</td>
     <td>${a.partners[i].size}</td><td>${a.opponents[i].size}</td></tr>`).join('');
 }
 $('#generateBtn').onclick=()=>{
@@ -315,13 +365,19 @@ $('#generateBtn').onclick=()=>{
   const attempts=+$('#attempts').value;
   messageEl.innerHTML=`<div class="alert warn">正在搜尋最佳賽程…</div>`;
   setTimeout(()=>{
-    const result=searchBest(n,rounds,attempts);
+    const rawRatings=duprValues();
+    if(rawRatings.some(Number.isNaN)){
+      messageEl.innerHTML=`<div class="alert warn">DUPR 請輸入 NR 或 0.000～10.000 的數字。</div>`;
+      return;
+    }
+    const labels=duprLabels();
+    const result=searchBest(n,rounds,attempts,rawRatings);
     if(!result){
       messageEl.innerHTML=`<div class="alert warn">找不到完全符合規則的賽程。請減少場數，或增加球員人數。</div>`;
       scheduleEl.className='empty';scheduleEl.textContent='本次設定無可行解。';metricsEl.style.display='none';statsWrap.style.display='none';
       lastResult=null;return;
     }
-    renderResult(result,names(),rounds);
+    renderResult(result,names(),rounds,rawRatings,labels);
   },20);
 };
 function textSchedule(){
@@ -338,9 +394,13 @@ $('#copyBtn').onclick=async()=>{
 };
 $('#csvBtn').onclick=()=>{
   if(!lastResult)return alert('請先產生賽程');
-  const rows=[['場次','隊伍A球員1','隊伍A球員2','隊伍B球員1','隊伍B球員2']];
+  const rows=[['場次','隊伍A球員1','A1 DUPR','隊伍A球員2','A2 DUPR','隊伍B球員1','B1 DUPR','隊伍B球員2','B2 DUPR']];
   const n=lastResult.names;
-  lastResult.schedule.forEach((m,i)=>rows.push([i+1,n[m.teams[0][0]],n[m.teams[0][1]],n[m.teams[1][0]],n[m.teams[1][1]]]));
+  const d=lastResult.duprText;
+  lastResult.schedule.forEach((m,i)=>rows.push([
+    i+1,n[m.teams[0][0]],d[m.teams[0][0]],n[m.teams[0][1]],d[m.teams[0][1]],
+    n[m.teams[1][0]],d[m.teams[1][0]],n[m.teams[1][1]],d[m.teams[1][1]]
+  ]));
   const csv='\ufeff'+rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='pickleball_schedule.csv';a.click();URL.revokeObjectURL(a.href);
