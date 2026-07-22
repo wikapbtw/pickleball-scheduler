@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Pickleball Scheduler Pro v1.1</title>
+<title>Pickleball Scheduler Pro v1.2</title>
 <style>
 :root{
   --bg:#f4f7fb;--panel:#ffffff;--text:#172033;--muted:#6b7280;--line:#e5e7eb;
@@ -77,7 +77,7 @@ footer{text-align:center;color:var(--muted);font-size:12px;margin-top:26px}
       <h1>Pickleball Scheduler Pro</h1>
       <p>雙打公平排程工具｜DUPR 實力平衡｜搭檔不重複｜不可連打三場</p>
     </div>
-    <div class="badge">v1.1 DUPR 平衡版</div>
+    <div class="badge">v1.2 DUPR＋主客場版</div>
   </div>
 
   <div class="layout">
@@ -136,7 +136,7 @@ footer{text-align:center;color:var(--muted);font-size:12px;margin-top:26px}
       </div>
     </main>
   </div>
-  <footer>Pickleball Scheduler Pro v1.1｜資料只保存在本機瀏覽器</footer>
+  <footer>Pickleball Scheduler Pro v1.2｜資料只保存在本機瀏覽器</footer>
 </div>
 
 <script>
@@ -282,6 +282,8 @@ function buildCandidate(n,rounds,rawRatings){
       }
     }
     if(!best) return null;
+    if(Math.random()<0.5){ best.home=0; best.away=1; }
+    else{ best.home=1; best.away=0; }
     schedule.push(best);
     usedPairs.add(pairKey(...best.teams[0]));usedPairs.add(pairKey(...best.teams[1]));
     best.players.forEach(p=>playCounts[p]++);
@@ -349,9 +351,19 @@ function renderResult(result,ns,rounds,rawRatings,duprText){
     <div class="match">
       <div class="matchhead"><div class="round">第 ${i+1} 場</div><div class="court">雙打</div></div>
       <div class="teams">
-        <div class="team">${ns[m.teams[0][0]]} <span class="small">${duprText[m.teams[0][0]]}</span><br>${ns[m.teams[0][1]]} <span class="small">${duprText[m.teams[0][1]]}</span><br><span class="small">隊伍平均 ${teamRating(m.teams[0],normalizedRatings(rawRatings)).toFixed(3)}</span></div>
-        <div class="vs">VS<br><span class="small">差 ${Math.abs(teamRating(m.teams[0],normalizedRatings(rawRatings))-teamRating(m.teams[1],normalizedRatings(rawRatings))).toFixed(3)}</span></div>
-        <div class="team">${ns[m.teams[1][0]]} <span class="small">${duprText[m.teams[1][0]]}</span><br>${ns[m.teams[1][1]]} <span class="small">${duprText[m.teams[1][1]]}</span><br><span class="small">隊伍平均 ${teamRating(m.teams[1],normalizedRatings(rawRatings)).toFixed(3)}</span></div>
+        <div class="team">
+          <span class="small"><b>${m.home===0?'主場':'客場'}</b></span><br>
+          ${ns[m.teams[0][0]]} <span class="small">${duprText[m.teams[0][0]]}</span><br>
+          ${ns[m.teams[0][1]]} <span class="small">${duprText[m.teams[0][1]]}</span><br>
+          <span class="small">隊伍平均 ${teamRating(m.teams[0],normalizedRatings(rawRatings)).toFixed(3)}</span>
+        </div>
+        <div class="vs">主場 VS 客場<br><span class="small">差 ${Math.abs(teamRating(m.teams[0],normalizedRatings(rawRatings))-teamRating(m.teams[1],normalizedRatings(rawRatings))).toFixed(3)}</span></div>
+        <div class="team">
+          <span class="small"><b>${m.home===1?'主場':'客場'}</b></span><br>
+          ${ns[m.teams[1][0]]} <span class="small">${duprText[m.teams[1][0]]}</span><br>
+          ${ns[m.teams[1][1]]} <span class="small">${duprText[m.teams[1][1]]}</span><br>
+          <span class="small">隊伍平均 ${teamRating(m.teams[1],normalizedRatings(rawRatings)).toFixed(3)}</span>
+        </div>
       </div>
     </div>`).join('');
   statsWrap.style.display='block';
@@ -384,7 +396,8 @@ function textSchedule(){
   if(!lastResult)return '';
   return lastResult.schedule.map((m,i)=>{
     const n=lastResult.names;
-    return `第${i+1}場：${n[m.teams[0][0]]}、${n[m.teams[0][1]]} VS ${n[m.teams[1][0]]}、${n[m.teams[1][1]]}`;
+    const home=m.teams[m.home], away=m.teams[m.away];
+    return `第${i+1}場：主場 ${n[home[0]]}、${n[home[1]]} VS 客場 ${n[away[0]]}、${n[away[1]]}`;
   }).join('\n');
 }
 $('#copyBtn').onclick=async()=>{
@@ -394,13 +407,16 @@ $('#copyBtn').onclick=async()=>{
 };
 $('#csvBtn').onclick=()=>{
   if(!lastResult)return alert('請先產生賽程');
-  const rows=[['場次','隊伍A球員1','A1 DUPR','隊伍A球員2','A2 DUPR','隊伍B球員1','B1 DUPR','隊伍B球員2','B2 DUPR']];
+  const rows=[['場次','主客場','球員1','球員1 DUPR','球員2','球員2 DUPR','對戰','主客場','球員3','球員3 DUPR','球員4','球員4 DUPR']];
   const n=lastResult.names;
   const d=lastResult.duprText;
-  lastResult.schedule.forEach((m,i)=>rows.push([
-    i+1,n[m.teams[0][0]],d[m.teams[0][0]],n[m.teams[0][1]],d[m.teams[0][1]],
-    n[m.teams[1][0]],d[m.teams[1][0]],n[m.teams[1][1]],d[m.teams[1][1]]
-  ]));
+  lastResult.schedule.forEach((m,i)=>{
+    const home=m.teams[m.home], away=m.teams[m.away];
+    rows.push([
+      i+1,'主場',n[home[0]],d[home[0]],n[home[1]],d[home[1]],
+      'VS','客場',n[away[0]],d[away[0]],n[away[1]],d[away[1]]
+    ]);
+  });
   const csv='\ufeff'+rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='pickleball_schedule.csv';a.click();URL.revokeObjectURL(a.href);
