@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Pickleball Scheduler Pro v1.3</title>
+<title>Pickleball Scheduler Pro v1.4</title>
 <style>
 :root{
   --bg:#f4f7fb;--panel:#ffffff;--text:#172033;--muted:#6b7280;--line:#e5e7eb;
@@ -246,52 +246,62 @@ function matchupSkillCost(g,teams,ratings,rawRatings){
   const unknowns=g.filter(p=>rawRatings[p]===null).length;
   return teamGap*42 + groupSpread*5 + unknowns*0.6;
 }
-function buildCandidate(n,rounds,rawRatings){
+function buildCandidate(n,rounds,rawRatings,nodeLimit=60000){
   const players=[...Array(n).keys()];
   const ratings=normalizedRatings(rawRatings);
-  const groups=shuffled(combinations(players,4));
+  const games=[];
+  for(const g of combinations(players,4)){
+    for(const teams of pairings4(g)) games.push({players:g,teams});
+  }
   const usedPairs=new Set();
   const schedule=[];
   const playCounts=Array(n).fill(0);
   const opponentCounts=Array.from({length:n},()=>Array(n).fill(0));
+  let nodes=0;
 
-  for(let r=0;r<rounds;r++){
-    let best=null,bestCost=Infinity;
-    const options=shuffled(groups).slice(0,Math.min(groups.length,70));
-    for(const g of options){
-      if(r>=2){
-        let bad=false;
-        for(const p of g){
-          if(schedule[r-1].players.includes(p)&&schedule[r-2].players.includes(p)){bad=true;break}
-        }
-        if(bad) continue;
-      }
-      for(const teams of pairings4(g)){
-        const pk1=pairKey(...teams[0]),pk2=pairKey(...teams[1]);
-        if(usedPairs.has(pk1)||usedPairs.has(pk2)) continue;
-        const projected=[...playCounts];
-        g.forEach(p=>projected[p]++);
-        const spread=Math.max(...projected)-Math.min(...projected);
-        let oppPenalty=0;
-        for(const a of teams[0]) for(const b of teams[1]) oppPenalty+=opponentCounts[a][b];
-        let streakPenalty=0;
-        if(r>=1) for(const p of g) if(schedule[r-1].players.includes(p)) streakPenalty+=0.35;
-        const skillPenalty=matchupSkillCost(g,teams,ratings,rawRatings);
-        const cost=spread*20+oppPenalty*3+streakPenalty+skillPenalty+Math.random();
-        if(cost<bestCost){bestCost=cost;best={players:g,teams}}
-      }
+  function dfs(r){
+    if(r===rounds) return true;
+    if(++nodes>nodeLimit) return false;
+
+    const options=[];
+    for(const game of games){
+      const g=game.players, teams=game.teams;
+      const pk1=pairKey(...teams[0]),pk2=pairKey(...teams[1]);
+      if(usedPairs.has(pk1)||usedPairs.has(pk2)) continue;
+      if(r>=2 && g.some(p=>schedule[r-1].players.includes(p)&&schedule[r-2].players.includes(p))) continue;
+
+      const projected=[...playCounts];
+      g.forEach(p=>projected[p]++);
+      const spread=Math.max(...projected)-Math.min(...projected);
+      let oppPenalty=0;
+      for(const a of teams[0]) for(const b of teams[1]) oppPenalty+=opponentCounts[a][b];
+      let streakPenalty=0;
+      if(r) for(const p of g) if(schedule[r-1].players.includes(p)) streakPenalty+=0.35;
+      const cost=spread*20+oppPenalty*3+streakPenalty+
+        matchupSkillCost(g,teams,ratings,rawRatings)+Math.random()*5;
+      options.push({game,pk1,pk2,cost});
     }
-    if(!best) return null;
-    best.home=0;
-    best.away=1;
-    schedule.push(best);
-    usedPairs.add(pairKey(...best.teams[0]));usedPairs.add(pairKey(...best.teams[1]));
-    best.players.forEach(p=>playCounts[p]++);
-    for(const a of best.teams[0])for(const b of best.teams[1]){
-      opponentCounts[a][b]++;opponentCounts[b][a]++;
+    options.sort((a,b)=>a.cost-b.cost);
+
+    for(const option of options){
+      const m={players:[...option.game.players],teams:option.game.teams.map(t=>[...t]),home:0,away:1};
+      schedule.push(m);
+      usedPairs.add(option.pk1); usedPairs.add(option.pk2);
+      m.players.forEach(p=>playCounts[p]++);
+      for(const a of m.teams[0]) for(const b of m.teams[1]){
+        opponentCounts[a][b]++; opponentCounts[b][a]++;
+      }
+      if(dfs(r+1)) return true;
+      for(const a of m.teams[0]) for(const b of m.teams[1]){
+        opponentCounts[a][b]--; opponentCounts[b][a]--;
+      }
+      m.players.forEach(p=>playCounts[p]--);
+      usedPairs.delete(option.pk1); usedPairs.delete(option.pk2);
+      schedule.pop();
     }
+    return false;
   }
-  return schedule;
+  return dfs(0)?schedule:null;
 }
 function analyze(schedule,n,rawRatings){
   const played=Array(n).fill(0), partners=Array.from({length:n},()=>new Set()),
@@ -333,10 +343,12 @@ function remapSchedule(schedule,playerMap){
 
 function searchBest(n,rounds,attempts,rawRatings){
   let best=null,bestA=null;
-  for(let i=0;i<attempts;i++){
+  const tries=Math.max(12,Math.floor(attempts/30));
+  const nodeLimit=rounds>=13?160000:50000;
+  for(let i=0;i<tries;i++){
     const playerMap=createRandomPlayerMap(n);
     const shuffledRatings=playerMap.map(originalIndex=>rawRatings[originalIndex]);
-    const candidate=buildCandidate(n,rounds,shuffledRatings);
+    const candidate=buildCandidate(n,rounds,shuffledRatings,nodeLimit);
     if(!candidate) continue;
 
     const mappedSchedule=remapSchedule(candidate,playerMap);
