@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Pickleball Scheduler Pro v1.4</title>
+<title>Pickleball Scheduler Pro v1.5</title>
 <style>
 :root{
   --bg:#f4f7fb;--panel:#ffffff;--text:#172033;--muted:#6b7280;--line:#e5e7eb;
@@ -77,7 +77,7 @@ footer{text-align:center;color:var(--muted);font-size:12px;margin-top:26px}
       <h1>Pickleball Scheduler Pro</h1>
       <p>雙打公平排程工具｜每次重新隨機編號｜DUPR 實力平衡｜不可連打三場</p>
     </div>
-    <div class="badge">v1.3 隨機編號＋固定主客場</div>
+    <div class="badge">v1.5 隨機編號＋對戰多樣化</div>
   </div>
 
   <div class="layout">
@@ -136,7 +136,7 @@ footer{text-align:center;color:var(--muted);font-size:12px;margin-top:26px}
       </div>
     </main>
   </div>
-  <footer>Pickleball Scheduler Pro v1.3｜資料只保存在本機瀏覽器</footer>
+  <footer>Pickleball Scheduler Pro v1.5｜資料只保存在本機瀏覽器</footer>
 </div>
 
 <script>
@@ -202,6 +202,9 @@ $('#clearBtn').onclick=()=>{
 };
 
 function pairKey(a,b){return [a,b].sort((x,y)=>x-y).join('-')}
+function matchupKey(match){
+  return match.teams.map(team=>pairKey(...team)).sort().join('|');
+}
 function combinations(arr,k){
   const out=[];
   function rec(start,pick){
@@ -341,8 +344,8 @@ function remapSchedule(schedule,playerMap){
   });
 }
 
-function searchBest(n,rounds,attempts,rawRatings){
-  let best=null,bestA=null;
+function searchBest(n,rounds,attempts,rawRatings,previousMatchups=new Set()){
+  let best=null,bestA=null,bestValue=-Infinity,bestRepeats=Infinity;
   const tries=Math.max(12,Math.floor(attempts/30));
   const nodeLimit=rounds>=13?160000:50000;
   for(let i=0;i<tries;i++){
@@ -353,14 +356,20 @@ function searchBest(n,rounds,attempts,rawRatings){
 
     const mappedSchedule=remapSchedule(candidate,playerMap);
     const a=analyze(mappedSchedule,n,rawRatings);
+    const repeats=mappedSchedule.reduce((sum,m)=>sum+(previousMatchups.has(matchupKey(m))?1:0),0);
+    // 重新產生時，優先避開上一份賽程的相同隊伍對戰；
+    // 公平度只要相近，就選擇變化較大的方案。
+    const value=a.score-repeats*12+Math.random()*0.35;
 
-    if(!bestA||a.score>bestA.score){
+    if(!bestA||value>bestValue){
       best=mappedSchedule;
       bestA=a;
-      if(a.score>=99.5) break;
+      bestValue=value;
+      bestRepeats=repeats;
+      if(a.score>=99.5&&repeats===0) break;
     }
   }
-  return best?{schedule:best,analysis:bestA}:null;
+  return best?{schedule:best,analysis:bestA,reusedMatchups:bestRepeats}:null;
 }
 function names(){
   return [...playersBox.querySelectorAll('.name-input')].map((x,i)=>x.value.trim()||`球員${i+1}`);
@@ -421,7 +430,10 @@ $('#generateBtn').onclick=()=>{
       return;
     }
     const labels=duprLabels();
-    const result=searchBest(n,rounds,attempts,rawRatings);
+    const previousMatchups=lastResult
+      ? new Set(lastResult.schedule.map(matchupKey))
+      : new Set();
+    const result=searchBest(n,rounds,attempts,rawRatings,previousMatchups);
     if(!result){
       messageEl.innerHTML=`<div class="alert warn">找不到完全符合規則的賽程。請減少場數，或增加球員人數。</div>`;
       scheduleEl.className='empty';scheduleEl.textContent='本次設定無可行解。';metricsEl.style.display='none';statsWrap.style.display='none';
