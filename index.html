@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Pickleball Scheduler Pro v1.2</title>
+<title>Pickleball Scheduler Pro v1.3</title>
 <style>
 :root{
   --bg:#f4f7fb;--panel:#ffffff;--text:#172033;--muted:#6b7280;--line:#e5e7eb;
@@ -75,9 +75,9 @@ footer{text-align:center;color:var(--muted);font-size:12px;margin-top:26px}
   <div class="hero">
     <div>
       <h1>Pickleball Scheduler Pro</h1>
-      <p>雙打公平排程工具｜DUPR 實力平衡｜搭檔不重複｜不可連打三場</p>
+      <p>雙打公平排程工具｜每次重新隨機編號｜DUPR 實力平衡｜不可連打三場</p>
     </div>
-    <div class="badge">v1.2 DUPR＋主客場版</div>
+    <div class="badge">v1.3 隨機編號＋固定主客場</div>
   </div>
 
   <div class="layout">
@@ -112,7 +112,7 @@ footer{text-align:center;color:var(--muted);font-size:12px;margin-top:26px}
       <button class="primary" id="generateBtn" style="width:100%;margin-top:10px">產生最佳賽程</button>
       <p class="note">
         硬性規則：每場 4 人、搭檔不重複、任何球員不可連續出賽 3 場。<br>
-        軟性目標：出賽平均、休息平均、對手分布平均，並讓兩隊平均 DUPR 分差盡可能小。NR 球員暫以本次已評分球員的平均值估算。
+        每次按下產生排程，都會先隨機重新分配球員內部編號，再搜尋最佳組合。左側固定為主場，右側固定為客場。NR 球員暫以本次已評分球員的平均值估算。
       </p>
     </aside>
 
@@ -136,7 +136,7 @@ footer{text-align:center;color:var(--muted);font-size:12px;margin-top:26px}
       </div>
     </main>
   </div>
-  <footer>Pickleball Scheduler Pro v1.2｜資料只保存在本機瀏覽器</footer>
+  <footer>Pickleball Scheduler Pro v1.3｜資料只保存在本機瀏覽器</footer>
 </div>
 
 <script>
@@ -282,8 +282,8 @@ function buildCandidate(n,rounds,rawRatings){
       }
     }
     if(!best) return null;
-    if(Math.random()<0.5){ best.home=0; best.away=1; }
-    else{ best.home=1; best.away=0; }
+    best.home=0;
+    best.away=1;
     schedule.push(best);
     usedPairs.add(pairKey(...best.teams[0]));usedPairs.add(pairKey(...best.teams[1]));
     best.players.forEach(p=>playCounts[p]++);
@@ -314,13 +314,39 @@ function analyze(schedule,n,rawRatings){
   score=Math.max(0,Math.min(100,score));
   return {played,partners,opponents,spread,score,avgTeamGap,maxTeamGap};
 }
+
+function createRandomPlayerMap(n){
+  return shuffled([...Array(n).keys()]);
+}
+function remapSchedule(schedule,playerMap){
+  return schedule.map(m=>{
+    const mappedTeams=m.teams.map(team=>team.map(p=>playerMap[p]));
+    return {
+      ...m,
+      players:m.players.map(p=>playerMap[p]),
+      teams:mappedTeams,
+      home:0,
+      away:1
+    };
+  });
+}
+
 function searchBest(n,rounds,attempts,rawRatings){
   let best=null,bestA=null;
   for(let i=0;i<attempts;i++){
-    const s=buildCandidate(n,rounds,rawRatings);
-    if(!s) continue;
-    const a=analyze(s,n,rawRatings);
-    if(!bestA||a.score>bestA.score){best=s;bestA=a;if(a.score>=99.5)break}
+    const playerMap=createRandomPlayerMap(n);
+    const shuffledRatings=playerMap.map(originalIndex=>rawRatings[originalIndex]);
+    const candidate=buildCandidate(n,rounds,shuffledRatings);
+    if(!candidate) continue;
+
+    const mappedSchedule=remapSchedule(candidate,playerMap);
+    const a=analyze(mappedSchedule,n,rawRatings);
+
+    if(!bestA||a.score>bestA.score){
+      best=mappedSchedule;
+      bestA=a;
+      if(a.score>=99.5) break;
+    }
   }
   return best?{schedule:best,analysis:bestA}:null;
 }
@@ -352,14 +378,14 @@ function renderResult(result,ns,rounds,rawRatings,duprText){
       <div class="matchhead"><div class="round">第 ${i+1} 場</div><div class="court">雙打</div></div>
       <div class="teams">
         <div class="team">
-          <span class="small"><b>${m.home===0?'主場':'客場'}</b></span><br>
+          <span class="small"><b>主場</b></span><br>
           ${ns[m.teams[0][0]]} <span class="small">${duprText[m.teams[0][0]]}</span><br>
           ${ns[m.teams[0][1]]} <span class="small">${duprText[m.teams[0][1]]}</span><br>
           <span class="small">隊伍平均 ${teamRating(m.teams[0],normalizedRatings(rawRatings)).toFixed(3)}</span>
         </div>
         <div class="vs">主場 VS 客場<br><span class="small">差 ${Math.abs(teamRating(m.teams[0],normalizedRatings(rawRatings))-teamRating(m.teams[1],normalizedRatings(rawRatings))).toFixed(3)}</span></div>
         <div class="team">
-          <span class="small"><b>${m.home===1?'主場':'客場'}</b></span><br>
+          <span class="small"><b>客場</b></span><br>
           ${ns[m.teams[1][0]]} <span class="small">${duprText[m.teams[1][0]]}</span><br>
           ${ns[m.teams[1][1]]} <span class="small">${duprText[m.teams[1][1]]}</span><br>
           <span class="small">隊伍平均 ${teamRating(m.teams[1],normalizedRatings(rawRatings)).toFixed(3)}</span>
@@ -396,7 +422,7 @@ function textSchedule(){
   if(!lastResult)return '';
   return lastResult.schedule.map((m,i)=>{
     const n=lastResult.names;
-    const home=m.teams[m.home], away=m.teams[m.away];
+    const home=m.teams[0], away=m.teams[1];
     return `第${i+1}場：主場 ${n[home[0]]}、${n[home[1]]} VS 客場 ${n[away[0]]}、${n[away[1]]}`;
   }).join('\n');
 }
@@ -411,7 +437,7 @@ $('#csvBtn').onclick=()=>{
   const n=lastResult.names;
   const d=lastResult.duprText;
   lastResult.schedule.forEach((m,i)=>{
-    const home=m.teams[m.home], away=m.teams[m.away];
+    const home=m.teams[0], away=m.teams[1];
     rows.push([
       i+1,'主場',n[home[0]],d[home[0]],n[home[1]],d[home[1]],
       'VS','客場',n[away[0]],d[away[0]],n[away[1]],d[away[1]]
